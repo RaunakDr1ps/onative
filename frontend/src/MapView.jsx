@@ -10,7 +10,7 @@ import {
 
 import "leaflet/dist/leaflet.css";
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = "https://onative-backend.onrender.com";
 
 const categoryColors = {
   vibe: "#8b5cf6",
