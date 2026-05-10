@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -11,32 +11,57 @@ import {
 import "leaflet/dist/leaflet.css";
 
 const API_URL = "https://onative-backend.onrender.com";
+const WS_URL = "wss://onative-backend.onrender.com/ws";
 
-const categoryColors = {
-  vibe: "#8b5cf6",
-  alert: "#ef4444",
-  event: "#3b82f6",
-  food: "#f59e0b",
-  traffic: "#f97316",
+const categories = {
+  all: {
+    label: "All",
+    emoji: "🌐",
+    color: "#ffffff",
+  },
+  vibe: {
+    label: "Vibe",
+    emoji: "💜",
+    color: "#8b5cf6",
+  },
+  alert: {
+    label: "Alert",
+    emoji: "🚨",
+    color: "#ef4444",
+  },
+  event: {
+    label: "Event",
+    emoji: "🎉",
+    color: "#3b82f6",
+  },
+  food: {
+    label: "Food",
+    emoji: "🍔",
+    color: "#f59e0b",
+  },
+  traffic: {
+    label: "Traffic",
+    emoji: "🚗",
+    color: "#f97316",
+  },
 };
 
 function formatTimeLeft(expiresAt) {
   const now = new Date();
   const expiry = new Date(expiresAt);
-
   const diff = expiry - now;
 
   if (diff <= 0) return "Expired";
 
   const mins = Math.floor(diff / 60000);
 
-  if (mins < 60) {
-    return `${mins}m left`;
-  }
+  if (mins < 1) return "Less than 1m left";
+  if (mins < 60) return `${mins}m left`;
 
   const hrs = Math.floor(mins / 60);
+  const remMins = mins % 60;
 
-  return `${hrs}h left`;
+  return `${hrs}h ${remMins}m left`;
 }
 
 function ViewportTracker({ setBounds }) {
@@ -84,6 +109,43 @@ function MapClickHandler({ setDraftPin, user }) {
   return null;
 }
 
+function LocateButton() {
+  const map = useMap();
+
+  const goToMyLocation = () => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+      },
+      () => {
+        alert("Location permission denied.");
+      }
+    );
+  };
+
+  return (
+    <button
+      onClick={goToMyLocation}
+      style={{
+        position: "absolute",
+        zIndex: 1000,
+        bottom: "22px",
+        right: "22px",
+        background: "linear-gradient(135deg, #111827, #020617)",
+        color: "white",
+        border: "1px solid rgba(255,255,255,0.16)",
+        padding: "13px 16px",
+        borderRadius: "999px",
+        cursor: "pointer",
+        fontWeight: "800",
+        boxShadow: "0 18px 45px rgba(0,0,0,0.35)",
+      }}
+    >
+      📍 My Location
+    </button>
+  );
+}
+
 function MapView({ user, logout }) {
   const [markers, setMarkers] = useState([]);
   const [draftPin, setDraftPin] = useState(null);
@@ -102,10 +164,9 @@ function MapView({ user, logout }) {
       );
 
       const data = await response.json();
-
       setMarkers(data);
     } catch (err) {
-      console.log(err);
+      console.log("Fetch pins failed:", err);
     }
   };
 
@@ -122,7 +183,7 @@ function MapView({ user, logout }) {
   }, [bounds]);
 
   useEffect(() => {
-    ws.current = new WebSocket("wss://onative-backend.onrender.com/ws");
+    ws.current = new WebSocket(WS_URL);
 
     ws.current.onopen = () => {
       setConnected(true);
@@ -134,10 +195,19 @@ function MapView({ user, logout }) {
       console.log("Realtime disconnected");
     };
 
+    ws.current.onerror = () => {
+      setConnected(false);
+      console.log("Realtime error");
+    };
+
     ws.current.onmessage = (event) => {
       const newPin = JSON.parse(event.data);
 
-      setMarkers((prev) => [newPin, ...prev]);
+      setMarkers((prev) => {
+        const exists = prev.some((pin) => pin.id === newPin.id);
+        if (exists) return prev;
+        return [newPin, ...prev];
+      });
     };
 
     return () => {
@@ -150,7 +220,10 @@ function MapView({ user, logout }) {
 
     const pinData = {
       ...draftPin,
-      time: new Date().toLocaleTimeString(),
+      time: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
     };
 
     try {
@@ -164,7 +237,7 @@ function MapView({ user, logout }) {
 
       setDraftPin(null);
     } catch (err) {
-      console.log(err);
+      console.log("Post failed:", err);
     }
   };
 
@@ -174,78 +247,128 @@ function MapView({ user, logout }) {
       : markers.filter((m) => m.category === selectedCategory);
 
   return (
-    <div style={{ position: "relative" }}>
-      {/* LEFT TOP */}
+    <div
+      style={{
+        position: "relative",
+        height: "100vh",
+        width: "100%",
+        overflow: "hidden",
+        background: "#020617",
+      }}
+    >
+      {/* BRAND PANEL */}
       <div
         style={{
           position: "absolute",
           zIndex: 1000,
-          top: "12px",
-          left: "12px",
-          background: "#0b1020",
+          top: "18px",
+          left: "18px",
+          background: "rgba(2, 6, 23, 0.88)",
+          backdropFilter: "blur(18px)",
           color: "white",
-          padding: "12px",
-          borderRadius: "14px",
-          fontFamily: "Arial",
-          boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
+          padding: "16px",
+          borderRadius: "22px",
+          fontFamily: "Inter, Arial, sans-serif",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          minWidth: "170px",
         }}
       >
-        <h2 style={{ margin: 0 }}>Onative</h2>
+        <div
+          style={{
+            fontSize: "24px",
+            fontWeight: "900",
+            letterSpacing: "-0.8px",
+          }}
+        >
+          Onative
+        </div>
 
-        <small style={{ color: "#9ca3af" }}>
+        <div
+          style={{
+            color: "#94a3b8",
+            fontSize: "12px",
+            marginTop: "2px",
+          }}
+        >
           realtime local pulse
-        </small>
+        </div>
 
-        <br />
-        <small>@{user.username}</small>
-
-        <br />
+        <div
+          style={{
+            marginTop: "12px",
+            padding: "8px 10px",
+            borderRadius: "12px",
+            background: "rgba(255,255,255,0.08)",
+            fontSize: "13px",
+            fontWeight: "700",
+          }}
+        >
+          @{user.username}
+        </div>
 
         <button
           onClick={logout}
           style={{
-            marginTop: "8px",
-            padding: "6px 10px",
-            borderRadius: "8px",
-            border: "none",
+            marginTop: "10px",
+            width: "100%",
+            padding: "9px 10px",
+            borderRadius: "12px",
+            border: "1px solid rgba(255,255,255,0.16)",
+            background: "rgba(255,255,255,0.1)",
+            color: "white",
             cursor: "pointer",
+            fontWeight: "800",
           }}
         >
           Logout
         </button>
       </div>
 
-      {/* RIGHT TOP */}
+      {/* STATUS PANEL */}
       <div
         style={{
           position: "absolute",
           zIndex: 1000,
-          top: "12px",
-          right: "12px",
-          background: "#0b1020",
+          top: "18px",
+          right: "18px",
+          background: "rgba(2, 6, 23, 0.88)",
+          backdropFilter: "blur(18px)",
           color: "white",
-          padding: "12px",
-          borderRadius: "14px",
-          fontFamily: "Arial",
-          textAlign: "center",
-          boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
+          padding: "15px 16px",
+          borderRadius: "22px",
+          fontFamily: "Inter, Arial, sans-serif",
+          textAlign: "left",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          minWidth: "190px",
         }}
       >
-        <div>Pins visible: {filteredMarkers.length}</div>
-
-        <div style={{ marginTop: "6px" }}>
-          Realtime:{" "}
-          <span
-            style={{
-              color: connected ? "#22c55e" : "#ef4444",
-              fontWeight: "bold",
-            }}
-          >
-            {connected ? "Live" : "Disconnected"}
-          </span>
+        <div style={{ fontWeight: "900", fontSize: "14px" }}>
+          Pins visible: {filteredMarkers.length}
         </div>
 
-        <div style={{ marginTop: "6px" }}>
+        <div style={{ marginTop: "8px", fontSize: "13px" }}>
+          <span
+            style={{
+              display: "inline-block",
+              height: "8px",
+              width: "8px",
+              borderRadius: "50%",
+              marginRight: "7px",
+              background: connected ? "#22c55e" : "#ef4444",
+              boxShadow: connected
+                ? "0 0 12px rgba(34,197,94,0.8)"
+                : "0 0 12px rgba(239,68,68,0.8)",
+            }}
+          />
+          Realtime:{" "}
+          <strong style={{ color: connected ? "#22c55e" : "#ef4444" }}>
+            {connected ? "Live" : "Disconnected"}
+          </strong>
+        </div>
+
+        <div style={{ marginTop: "8px", color: "#cbd5e1", fontSize: "12px" }}>
           Viewport loading: ON
         </div>
       </div>
@@ -255,63 +378,72 @@ function MapView({ user, logout }) {
         style={{
           position: "absolute",
           zIndex: 1000,
-          top: "70px",
+          top: "92px",
           left: "50%",
           transform: "translateX(-50%)",
           display: "flex",
           gap: "8px",
-          background: "#0b1020",
+          background: "rgba(2, 6, 23, 0.88)",
+          backdropFilter: "blur(18px)",
           padding: "10px",
-          borderRadius: "14px",
-          boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
+          borderRadius: "999px",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          fontFamily: "Inter, Arial, sans-serif",
         }}
       >
-        {["all", "vibe", "alert", "event", "food", "traffic"].map(
-          (cat) => (
+        {Object.entries(categories).map(([key, cat]) => {
+          const active = selectedCategory === key;
+
+          return (
             <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
+              key={key}
+              onClick={() => setSelectedCategory(key)}
               style={{
-                background:
-                  selectedCategory === cat ? "white" : "#1f2937",
-                color:
-                  selectedCategory === cat ? "black" : "white",
-                border: "none",
-                padding: "8px 12px",
-                borderRadius: "10px",
+                background: active
+                  ? "white"
+                  : "rgba(30,41,59,0.95)",
+                color: active ? "#020617" : "white",
+                border: active
+                  ? "1px solid white"
+                  : "1px solid rgba(255,255,255,0.12)",
+                padding: "9px 13px",
+                borderRadius: "999px",
                 cursor: "pointer",
-                fontWeight: "bold",
+                fontWeight: "900",
+                fontSize: "12px",
+                textTransform: "capitalize",
+                boxShadow: active
+                  ? `0 0 22px ${cat.color}55`
+                  : "none",
               }}
             >
-              {cat}
+              {cat.emoji} {cat.label}
             </button>
-          )
-        )}
+          );
+        })}
       </div>
 
-      {/* MY LOCATION */}
-      <button
-        onClick={() => {
-          navigator.geolocation.getCurrentPosition((pos) => {
-            window.location.href = `#${pos.coords.latitude},${pos.coords.longitude}`;
-          });
-        }}
+      {/* HINT */}
+      <div
         style={{
           position: "absolute",
           zIndex: 1000,
-          bottom: "20px",
-          right: "20px",
-          background: "#0b1020",
+          bottom: "22px",
+          left: "22px",
+          background: "rgba(2, 6, 23, 0.88)",
+          backdropFilter: "blur(18px)",
           color: "white",
-          border: "none",
-          padding: "14px",
-          borderRadius: "14px",
-          cursor: "pointer",
-          fontWeight: "bold",
+          padding: "12px 15px",
+          borderRadius: "999px",
+          fontFamily: "Inter, Arial, sans-serif",
+          fontSize: "13px",
+          border: "1px solid rgba(255,255,255,0.12)",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
         }}
       >
-        📍 My Location
-      </button>
+        Click anywhere on the map to post
+      </div>
 
       {/* CREATE POST MODAL */}
       {draftPin && (
@@ -319,119 +451,188 @@ function MapView({ user, logout }) {
           style={{
             position: "absolute",
             zIndex: 2000,
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            background: "white",
-            padding: "20px",
-            borderRadius: "18px",
-            width: "320px",
-            boxShadow: "0 10px 40px rgba(0,0,0,0.5)",
-            fontFamily: "Arial",
+            inset: 0,
+            background: "rgba(2,6,23,0.45)",
+            backdropFilter: "blur(5px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: "Inter, Arial, sans-serif",
           }}
         >
-          <h2
-            style={{
-              marginTop: 0,
-              textAlign: "center",
-            }}
-          >
-            Drop a live update
-          </h2>
-
-          <input
-            value={draftPin.username}
-            disabled
-            style={{
-              width: "100%",
-              padding: "12px",
-              marginBottom: "12px",
-              borderRadius: "10px",
-              border: "1px solid #d1d5db",
-              background: "#f3f4f6",
-            }}
-          />
-
-          <textarea
-            placeholder="What's happening?"
-            value={draftPin.text}
-            onChange={(e) =>
-              setDraftPin({
-                ...draftPin,
-                text: e.target.value,
-              })
-            }
-            style={{
-              width: "100%",
-              height: "100px",
-              padding: "12px",
-              borderRadius: "10px",
-              border: "1px solid #d1d5db",
-              resize: "none",
-              marginBottom: "12px",
-            }}
-          />
-
-          <select
-            value={draftPin.category}
-            onChange={(e) =>
-              setDraftPin({
-                ...draftPin,
-                category: e.target.value,
-              })
-            }
-            style={{
-              width: "100%",
-              padding: "12px",
-              borderRadius: "10px",
-              border: "1px solid #d1d5db",
-              marginBottom: "14px",
-            }}
-          >
-            <option value="vibe">💜 Vibe — 2h</option>
-            <option value="alert">🚨 Alert — 6h</option>
-            <option value="event">🎉 Event — 12h</option>
-            <option value="food">🍔 Food — 4h</option>
-            <option value="traffic">🚗 Traffic — 30m</option>
-          </select>
-
           <div
             style={{
-              display: "flex",
-              gap: "10px",
+              width: "380px",
+              background: "linear-gradient(180deg, #ffffff, #f8fafc)",
+              padding: "22px",
+              borderRadius: "26px",
+              boxShadow: "0 30px 80px rgba(0,0,0,0.45)",
+              border: "1px solid rgba(15,23,42,0.08)",
             }}
           >
-            <button
-              onClick={submitPin}
+            <div
               style={{
-                flex: 1,
-                background: "#0b1020",
-                color: "white",
-                border: "none",
-                padding: "12px",
-                borderRadius: "10px",
-                cursor: "pointer",
-                fontWeight: "bold",
+                textAlign: "center",
+                marginBottom: "18px",
               }}
             >
-              Post
-            </button>
+              <div
+                style={{
+                  fontSize: "22px",
+                  fontWeight: "950",
+                  color: "#020617",
+                  letterSpacing: "-0.5px",
+                }}
+              >
+                Drop a live update
+              </div>
 
-            <button
-              onClick={() => setDraftPin(null)}
+              <div
+                style={{
+                  fontSize: "13px",
+                  color: "#64748b",
+                  marginTop: "4px",
+                }}
+              >
+                This pin will expire based on category
+              </div>
+            </div>
+
+            <label
               style={{
-                flex: 1,
-                background: "#e5e7eb",
-                color: "black",
-                border: "none",
-                padding: "12px",
-                borderRadius: "10px",
-                cursor: "pointer",
-                fontWeight: "bold",
+                fontSize: "12px",
+                fontWeight: "900",
+                color: "#334155",
               }}
             >
-              Cancel
-            </button>
+              Username
+            </label>
+
+            <input
+              value={draftPin.username}
+              disabled
+              style={{
+                width: "100%",
+                padding: "13px 14px",
+                marginTop: "6px",
+                marginBottom: "13px",
+                borderRadius: "15px",
+                border: "1px solid #cbd5e1",
+                background: "#f1f5f9",
+                color: "#0f172a",
+                boxSizing: "border-box",
+                fontWeight: "800",
+              }}
+            />
+
+            <label
+              style={{
+                fontSize: "12px",
+                fontWeight: "900",
+                color: "#334155",
+              }}
+            >
+              Update
+            </label>
+
+            <textarea
+              placeholder="What's happening here?"
+              value={draftPin.text}
+              onChange={(e) =>
+                setDraftPin({
+                  ...draftPin,
+                  text: e.target.value,
+                })
+              }
+              style={{
+                width: "100%",
+                height: "105px",
+                padding: "13px 14px",
+                marginTop: "6px",
+                marginBottom: "13px",
+                borderRadius: "15px",
+                border: "1px solid #cbd5e1",
+                resize: "none",
+                boxSizing: "border-box",
+                outline: "none",
+                color: "#0f172a",
+                background: "white",
+                fontWeight: "600",
+              }}
+            />
+
+            <label
+              style={{
+                fontSize: "12px",
+                fontWeight: "900",
+                color: "#334155",
+              }}
+            >
+              Category
+            </label>
+
+            <select
+              value={draftPin.category}
+              onChange={(e) =>
+                setDraftPin({
+                  ...draftPin,
+                  category: e.target.value,
+                })
+              }
+              style={{
+                width: "100%",
+                padding: "13px 14px",
+                marginTop: "6px",
+                marginBottom: "16px",
+                borderRadius: "15px",
+                border: "1px solid #cbd5e1",
+                background: "white",
+                color: "#0f172a",
+                boxSizing: "border-box",
+                fontWeight: "800",
+              }}
+            >
+              <option value="vibe">💜 Vibe — 2h</option>
+              <option value="alert">🚨 Alert — 6h</option>
+              <option value="event">🎉 Event — 12h</option>
+              <option value="food">🍔 Food — 4h</option>
+              <option value="traffic">🚗 Traffic — 30m</option>
+            </select>
+
+            <div style={{ display: "flex", gap: "11px" }}>
+              <button
+                onClick={submitPin}
+                style={{
+                  flex: 1,
+                  background: "linear-gradient(135deg, #020617, #111827)",
+                  color: "white",
+                  border: "none",
+                  padding: "13px",
+                  borderRadius: "15px",
+                  cursor: "pointer",
+                  fontWeight: "950",
+                  boxShadow: "0 16px 35px rgba(2,6,23,0.35)",
+                }}
+              >
+                Post
+              </button>
+
+              <button
+                onClick={() => setDraftPin(null)}
+                style={{
+                  flex: 1,
+                  background: "#e2e8f0",
+                  color: "#020617",
+                  border: "1px solid #cbd5e1",
+                  padding: "13px",
+                  borderRadius: "15px",
+                  cursor: "pointer",
+                  fontWeight: "950",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -451,57 +652,85 @@ function MapView({ user, logout }) {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
+        <LocateButton />
+
         <MapClickHandler
           setDraftPin={setDraftPin}
           user={user}
         />
 
-        {filteredMarkers.map((marker) => (
-          <CircleMarker
-            key={marker.id}
-            center={[marker.lat, marker.lng]}
-            radius={10}
-            pathOptions={{
-              color:
-                categoryColors[marker.category] || "#3b82f6",
-              fillColor:
-                categoryColors[marker.category] || "#3b82f6",
-              fillOpacity: 0.8,
-            }}
-          >
-            <Popup>
-              <strong>@{marker.username}</strong>
+        {filteredMarkers.map((marker) => {
+          const category = categories[marker.category] || categories.vibe;
 
-              <br />
+          return (
+            <CircleMarker
+              key={marker.id}
+              center={[marker.lat, marker.lng]}
+              radius={11}
+              pathOptions={{
+                color: category.color,
+                fillColor: category.color,
+                fillOpacity: 0.82,
+                weight: 3,
+              }}
+            >
+              <Popup>
+                <div
+                  style={{
+                    minWidth: "190px",
+                    fontFamily: "Inter, Arial, sans-serif",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: "950",
+                      fontSize: "15px",
+                      marginBottom: "6px",
+                      color: "#020617",
+                    }}
+                  >
+                    {category.emoji} {category.label}
+                  </div>
 
-              {marker.text}
+                  <div
+                    style={{
+                      color: "#334155",
+                      fontWeight: "800",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    @{marker.username}
+                  </div>
 
-              <br />
-              <br />
+                  <div
+                    style={{
+                      color: "#0f172a",
+                      marginBottom: "10px",
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    {marker.text}
+                  </div>
 
-              <small>
-                Category: {marker.category}
-              </small>
-
-              <br />
-
-              <small>
-                Posted: {marker.time || "Just now"}
-              </small>
-
-              <br />
-
-              <small
-                style={{
-                  color: "#ef4444",
-                  fontWeight: "bold",
-                }}
-              >
-                ⏳ {formatTimeLeft(marker.expires_at)}
-              </small>
-            </Popup>
-          </CircleMarker>
-        ))}
+                  <div
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: "12px",
+                      background: "#f1f5f9",
+                      color: "#475569",
+                      fontSize: "12px",
+                      fontWeight: "800",
+                    }}
+                  >
+                    Posted: {marker.time || "Just now"}
+                    <br />
+                    ⏳ {formatTimeLeft(marker.expires_at)}
+                  </div>
+                </div>
+              </Popup>
+            </CircleMarker>
+          );
+        })}
       </MapContainer>
     </div>
   );
