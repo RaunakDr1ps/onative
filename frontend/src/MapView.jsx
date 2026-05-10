@@ -122,7 +122,7 @@ function MapView({ user, logout }) {
   }, [bounds]);
 
   useEffect(() => {
-    ws.current = new WebSocket("ws://127.0.0.1:8000/ws");
+    ws.current = new WebSocket("wss://onative-backend.onrender.com/ws");
 
     ws.current.onopen = () => {
       setConnected(true);
