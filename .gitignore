@@ -1,0 +1,6 @@
+backend/venv/
+frontend/node_modules/
+backend/onative.db
+__pycache__/
+*.pyc
+.env
