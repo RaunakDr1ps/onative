@@ -14,54 +14,45 @@ const API_URL = "https://onative-backend.onrender.com";
 const WS_URL = "wss://onative-backend.onrender.com/ws";
 
 const categories = {
-  all: {
-    label: "All",
-    emoji: "🌐",
-    color: "#ffffff",
-  },
-  vibe: {
-    label: "Vibe",
-    emoji: "💜",
-    color: "#8b5cf6",
-  },
-  alert: {
-    label: "Alert",
-    emoji: "🚨",
-    color: "#ef4444",
-  },
-  event: {
-    label: "Event",
-    emoji: "🎉",
-    color: "#3b82f6",
-  },
-  food: {
-    label: "Food",
-    emoji: "🍔",
-    color: "#f59e0b",
-  },
-  traffic: {
-    label: "Traffic",
-    emoji: "🚗",
-    color: "#f97316",
-  },
+  all: { label: "All", emoji: "🌐", color: "#ffffff" },
+  vibe: { label: "Vibe", emoji: "💜", color: "#8b5cf6" },
+  alert: { label: "Alert", emoji: "🚨", color: "#ef4444" },
+  event: { label: "Event", emoji: "🎉", color: "#3b82f6" },
+  food: { label: "Food", emoji: "🍔", color: "#f59e0b" },
+  traffic: { label: "Traffic", emoji: "🚗", color: "#f97316" },
 };
 
-function formatTimeLeft(expiresAt) {
-  const now = new Date();
-  const expiry = new Date(expiresAt);
-  const diff = expiry - now;
+function parseBackendDate(value) {
+  if (!value) return null;
+
+  const hasTimezone =
+    value.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(value);
+
+  return new Date(hasTimezone ? value : `${value}Z`);
+}
+
+function formatTimeLeft(expiresAt, nowMs) {
+  const expiry = parseBackendDate(expiresAt);
+  if (!expiry) return "No expiry";
+
+  const diff = expiry.getTime() - nowMs;
 
   if (diff <= 0) return "Expired";
 
-  const mins = Math.floor(diff / 60000);
+  const totalSeconds = Math.floor(diff / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
 
-  if (mins < 1) return "Less than 1m left";
-  if (mins < 60) return `${mins}m left`;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s left`;
+  if (minutes > 0) return `${minutes}m ${seconds}s left`;
+  return `${seconds}s left`;
+}
 
-  const hrs = Math.floor(mins / 60);
-  const remMins = mins % 60;
-
-  return `${hrs}h ${remMins}m left`;
+function isExpired(expiresAt, nowMs) {
+  const expiry = parseBackendDate(expiresAt);
+  if (!expiry) return false;
+  return expiry.getTime() <= nowMs;
 }
 
 function ViewportTracker({ setBounds }) {
@@ -152,6 +143,7 @@ function MapView({ user, logout }) {
   const [bounds, setBounds] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [connected, setConnected] = useState(false);
+  const [nowMs, setNowMs] = useState(Date.now());
 
   const ws = useRef(null);
 
@@ -173,6 +165,14 @@ function MapView({ user, logout }) {
   useEffect(() => {
     fetchPins();
   }, [bounds]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -241,10 +241,14 @@ function MapView({ user, logout }) {
     }
   };
 
+  const nonExpiredMarkers = markers.filter(
+    (marker) => !isExpired(marker.expires_at, nowMs)
+  );
+
   const filteredMarkers =
     selectedCategory === "all"
-      ? markers
-      : markers.filter((m) => m.category === selectedCategory);
+      ? nonExpiredMarkers
+      : nonExpiredMarkers.filter((m) => m.category === selectedCategory);
 
   return (
     <div
@@ -256,7 +260,6 @@ function MapView({ user, logout }) {
         background: "#020617",
       }}
     >
-      {/* BRAND PANEL */}
       <div
         style={{
           position: "absolute",
@@ -274,23 +277,8 @@ function MapView({ user, logout }) {
           minWidth: "170px",
         }}
       >
-        <div
-          style={{
-            fontSize: "24px",
-            fontWeight: "900",
-            letterSpacing: "-0.8px",
-          }}
-        >
-          Onative
-        </div>
-
-        <div
-          style={{
-            color: "#94a3b8",
-            fontSize: "12px",
-            marginTop: "2px",
-          }}
-        >
+        <div style={{ fontSize: "24px", fontWeight: "900" }}>Onative</div>
+        <div style={{ color: "#94a3b8", fontSize: "12px" }}>
           realtime local pulse
         </div>
 
@@ -325,7 +313,6 @@ function MapView({ user, logout }) {
         </button>
       </div>
 
-      {/* STATUS PANEL */}
       <div
         style={{
           position: "absolute",
@@ -338,7 +325,6 @@ function MapView({ user, logout }) {
           padding: "15px 16px",
           borderRadius: "22px",
           fontFamily: "Inter, Arial, sans-serif",
-          textAlign: "left",
           boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
           border: "1px solid rgba(255,255,255,0.12)",
           minWidth: "190px",
@@ -357,9 +343,6 @@ function MapView({ user, logout }) {
               borderRadius: "50%",
               marginRight: "7px",
               background: connected ? "#22c55e" : "#ef4444",
-              boxShadow: connected
-                ? "0 0 12px rgba(34,197,94,0.8)"
-                : "0 0 12px rgba(239,68,68,0.8)",
             }}
           />
           Realtime:{" "}
@@ -373,7 +356,6 @@ function MapView({ user, logout }) {
         </div>
       </div>
 
-      {/* CATEGORY FILTER */}
       <div
         style={{
           position: "absolute",
@@ -400,9 +382,7 @@ function MapView({ user, logout }) {
               key={key}
               onClick={() => setSelectedCategory(key)}
               style={{
-                background: active
-                  ? "white"
-                  : "rgba(30,41,59,0.95)",
+                background: active ? "white" : "rgba(30,41,59,0.95)",
                 color: active ? "#020617" : "white",
                 border: active
                   ? "1px solid white"
@@ -412,10 +392,6 @@ function MapView({ user, logout }) {
                 cursor: "pointer",
                 fontWeight: "900",
                 fontSize: "12px",
-                textTransform: "capitalize",
-                boxShadow: active
-                  ? `0 0 22px ${cat.color}55`
-                  : "none",
               }}
             >
               {cat.emoji} {cat.label}
@@ -424,7 +400,6 @@ function MapView({ user, logout }) {
         })}
       </div>
 
-      {/* HINT */}
       <div
         style={{
           position: "absolute",
@@ -439,13 +414,11 @@ function MapView({ user, logout }) {
           fontFamily: "Inter, Arial, sans-serif",
           fontSize: "13px",
           border: "1px solid rgba(255,255,255,0.12)",
-          boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
         }}
       >
         Click anywhere on the map to post
       </div>
 
-      {/* CREATE POST MODAL */}
       {draftPin && (
         <div
           style={{
@@ -467,46 +440,22 @@ function MapView({ user, logout }) {
               padding: "22px",
               borderRadius: "26px",
               boxShadow: "0 30px 80px rgba(0,0,0,0.45)",
-              border: "1px solid rgba(15,23,42,0.08)",
             }}
           >
-            <div
-              style={{
-                textAlign: "center",
-                marginBottom: "18px",
-              }}
-            >
+            <div style={{ textAlign: "center", marginBottom: "18px" }}>
               <div
                 style={{
                   fontSize: "22px",
                   fontWeight: "950",
                   color: "#020617",
-                  letterSpacing: "-0.5px",
                 }}
               >
                 Drop a live update
               </div>
-
-              <div
-                style={{
-                  fontSize: "13px",
-                  color: "#64748b",
-                  marginTop: "4px",
-                }}
-              >
+              <div style={{ fontSize: "13px", color: "#64748b" }}>
                 This pin will expire based on category
               </div>
             </div>
-
-            <label
-              style={{
-                fontSize: "12px",
-                fontWeight: "900",
-                color: "#334155",
-              }}
-            >
-              Username
-            </label>
 
             <input
               value={draftPin.username}
@@ -514,7 +463,6 @@ function MapView({ user, logout }) {
               style={{
                 width: "100%",
                 padding: "13px 14px",
-                marginTop: "6px",
                 marginBottom: "13px",
                 borderRadius: "15px",
                 border: "1px solid #cbd5e1",
@@ -525,68 +473,36 @@ function MapView({ user, logout }) {
               }}
             />
 
-            <label
-              style={{
-                fontSize: "12px",
-                fontWeight: "900",
-                color: "#334155",
-              }}
-            >
-              Update
-            </label>
-
             <textarea
               placeholder="What's happening here?"
               value={draftPin.text}
               onChange={(e) =>
-                setDraftPin({
-                  ...draftPin,
-                  text: e.target.value,
-                })
+                setDraftPin({ ...draftPin, text: e.target.value })
               }
               style={{
                 width: "100%",
                 height: "105px",
                 padding: "13px 14px",
-                marginTop: "6px",
                 marginBottom: "13px",
                 borderRadius: "15px",
                 border: "1px solid #cbd5e1",
                 resize: "none",
                 boxSizing: "border-box",
-                outline: "none",
                 color: "#0f172a",
-                background: "white",
-                fontWeight: "600",
               }}
             />
-
-            <label
-              style={{
-                fontSize: "12px",
-                fontWeight: "900",
-                color: "#334155",
-              }}
-            >
-              Category
-            </label>
 
             <select
               value={draftPin.category}
               onChange={(e) =>
-                setDraftPin({
-                  ...draftPin,
-                  category: e.target.value,
-                })
+                setDraftPin({ ...draftPin, category: e.target.value })
               }
               style={{
                 width: "100%",
                 padding: "13px 14px",
-                marginTop: "6px",
                 marginBottom: "16px",
                 borderRadius: "15px",
                 border: "1px solid #cbd5e1",
-                background: "white",
                 color: "#0f172a",
                 boxSizing: "border-box",
                 fontWeight: "800",
@@ -604,14 +520,13 @@ function MapView({ user, logout }) {
                 onClick={submitPin}
                 style={{
                   flex: 1,
-                  background: "linear-gradient(135deg, #020617, #111827)",
+                  background: "#020617",
                   color: "white",
                   border: "none",
                   padding: "13px",
                   borderRadius: "15px",
                   cursor: "pointer",
                   fontWeight: "950",
-                  boxShadow: "0 16px 35px rgba(2,6,23,0.35)",
                 }}
               >
                 Post
@@ -640,10 +555,7 @@ function MapView({ user, logout }) {
       <MapContainer
         center={[25.5941, 85.1376]}
         zoom={13}
-        style={{
-          height: "100vh",
-          width: "100%",
-        }}
+        style={{ height: "100vh", width: "100%" }}
       >
         <ViewportTracker setBounds={setBounds} />
 
@@ -654,10 +566,7 @@ function MapView({ user, logout }) {
 
         <LocateButton />
 
-        <MapClickHandler
-          setDraftPin={setDraftPin}
-          user={user}
-        />
+        <MapClickHandler setDraftPin={setDraftPin} user={user} />
 
         {filteredMarkers.map((marker) => {
           const category = categories[marker.category] || categories.vibe;
@@ -692,19 +601,14 @@ function MapView({ user, logout }) {
                     {category.emoji} {category.label}
                   </div>
 
-                  <div
-                    style={{
-                      color: "#334155",
-                      fontWeight: "800",
-                      marginBottom: "8px",
-                    }}
-                  >
+                  <div style={{ color: "#334155", fontWeight: "800" }}>
                     @{marker.username}
                   </div>
 
                   <div
                     style={{
                       color: "#0f172a",
+                      marginTop: "8px",
                       marginBottom: "10px",
                       lineHeight: 1.35,
                     }}
@@ -724,7 +628,7 @@ function MapView({ user, logout }) {
                   >
                     Posted: {marker.time || "Just now"}
                     <br />
-                    ⏳ {formatTimeLeft(marker.expires_at)}
+                    ⏳ {formatTimeLeft(marker.expires_at, nowMs)}
                   </div>
                 </div>
               </Popup>
