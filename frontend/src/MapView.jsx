@@ -2,13 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
-  CircleMarker,
+  Marker,
   Popup,
   useMapEvents,
   useMap,
 } from "react-leaflet";
 
+import MarkerClusterGroup from "react-leaflet-cluster";
+import L from "leaflet";
+
 import "leaflet/dist/leaflet.css";
+import "leaflet.markercluster/dist/MarkerCluster.css";
+import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 
 const API_URL = "https://onative-backend.onrender.com";
 const WS_URL = "wss://onative-backend.onrender.com/ws";
@@ -21,6 +26,31 @@ const categories = {
   food: { label: "Food", emoji: "🍔", color: "#f59e0b" },
   traffic: { label: "Traffic", emoji: "🚗", color: "#f97316" },
 };
+
+function createPinIcon(category) {
+  return L.divIcon({
+    html: `
+      <div style="
+        width: 24px;
+        height: 24px;
+        background: ${category.color};
+        border: 3px solid white;
+        border-radius: 999px;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+      ">
+        ${category.emoji}
+      </div>
+    `,
+    className: "",
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -12],
+  });
+}
 
 function parseBackendDate(value) {
   if (!value) return null;
@@ -84,7 +114,6 @@ function MapController({ searchTarget }) {
 
   useEffect(() => {
     if (!searchTarget) return;
-
     map.setView([searchTarget.lat, searchTarget.lng], 15);
   }, [searchTarget, map]);
 
@@ -177,11 +206,11 @@ function MapView({ user, logout }) {
   }, [bounds]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    const timer = setInterval(() => {
       setNowMs(Date.now());
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -663,73 +692,69 @@ function MapView({ user, logout }) {
         <LocateButton />
         <MapClickHandler setDraftPin={setDraftPin} user={user} />
 
-        {filteredMarkers.map((marker) => {
-          const category = categories[marker.category] || categories.vibe;
+        <MarkerClusterGroup chunkedLoading>
+          {filteredMarkers.map((marker) => {
+            const category = categories[marker.category] || categories.vibe;
 
-          return (
-            <CircleMarker
-              key={marker.id}
-              center={[marker.lat, marker.lng]}
-              radius={11}
-              pathOptions={{
-                color: category.color,
-                fillColor: category.color,
-                fillOpacity: 0.82,
-                weight: 3,
-              }}
-            >
-              <Popup>
-                <div
-                  style={{
-                    minWidth: "190px",
-                    fontFamily: "Inter, Arial, sans-serif",
-                  }}
-                >
+            return (
+              <Marker
+                key={marker.id}
+                position={[marker.lat, marker.lng]}
+                icon={createPinIcon(category)}
+              >
+                <Popup>
                   <div
                     style={{
-                      fontWeight: "950",
-                      fontSize: "15px",
-                      marginBottom: "6px",
-                      color: "#020617",
+                      minWidth: "190px",
+                      fontFamily: "Inter, Arial, sans-serif",
                     }}
                   >
-                    {category.emoji} {category.label}
-                  </div>
+                    <div
+                      style={{
+                        fontWeight: "950",
+                        fontSize: "15px",
+                        marginBottom: "6px",
+                        color: "#020617",
+                      }}
+                    >
+                      {category.emoji} {category.label}
+                    </div>
 
-                  <div style={{ color: "#334155", fontWeight: "800" }}>
-                    @{marker.username}
-                  </div>
+                    <div style={{ color: "#334155", fontWeight: "800" }}>
+                      @{marker.username}
+                    </div>
 
-                  <div
-                    style={{
-                      color: "#0f172a",
-                      marginTop: "8px",
-                      marginBottom: "10px",
-                      lineHeight: 1.35,
-                    }}
-                  >
-                    {marker.text}
-                  </div>
+                    <div
+                      style={{
+                        color: "#0f172a",
+                        marginTop: "8px",
+                        marginBottom: "10px",
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {marker.text}
+                    </div>
 
-                  <div
-                    style={{
-                      padding: "8px 10px",
-                      borderRadius: "12px",
-                      background: "#f1f5f9",
-                      color: "#475569",
-                      fontSize: "12px",
-                      fontWeight: "800",
-                    }}
-                  >
-                    Posted: {marker.time || "Just now"}
-                    <br />
-                    ⏳ {formatTimeLeft(marker.expires_at, nowMs)}
+                    <div
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: "12px",
+                        background: "#f1f5f9",
+                        color: "#475569",
+                        fontSize: "12px",
+                        fontWeight: "800",
+                      }}
+                    >
+                      Posted: {marker.time || "Just now"}
+                      <br />
+                      ⏳ {formatTimeLeft(marker.expires_at, nowMs)}
+                    </div>
                   </div>
-                </div>
-              </Popup>
-            </CircleMarker>
-          );
-        })}
+                </Popup>
+              </Marker>
+            );
+          })}
+        </MarkerClusterGroup>
       </MapContainer>
     </div>
   );
