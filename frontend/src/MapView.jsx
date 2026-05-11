@@ -24,10 +24,7 @@ const categories = {
 
 function parseBackendDate(value) {
   if (!value) return null;
-
-  const hasTimezone =
-    value.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(value);
-
+  const hasTimezone = value.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(value);
   return new Date(hasTimezone ? value : `${value}Z`);
 }
 
@@ -36,7 +33,6 @@ function formatTimeLeft(expiresAt, nowMs) {
   if (!expiry) return "No expiry";
 
   const diff = expiry.getTime() - nowMs;
-
   if (diff <= 0) return "Expired";
 
   const totalSeconds = Math.floor(diff / 1000);
@@ -71,7 +67,6 @@ function ViewportTracker({ setBounds }) {
     };
 
     updateBounds();
-
     map.on("moveend", updateBounds);
     map.on("zoomend", updateBounds);
 
@@ -80,6 +75,18 @@ function ViewportTracker({ setBounds }) {
       map.off("zoomend", updateBounds);
     };
   }, [map, setBounds]);
+
+  return null;
+}
+
+function MapController({ searchTarget }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!searchTarget) return;
+
+    map.setView([searchTarget.lat, searchTarget.lng], 15);
+  }, [searchTarget, map]);
 
   return null;
 }
@@ -144,6 +151,9 @@ function MapView({ user, logout }) {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [connected, setConnected] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
+  const [searchText, setSearchText] = useState("");
+  const [searchTarget, setSearchTarget] = useState(null);
+  const [searching, setSearching] = useState(false);
 
   const ws = useRef(null);
 
@@ -214,6 +224,37 @@ function MapView({ user, logout }) {
       ws.current.close();
     };
   }, []);
+
+  const searchPlace = async () => {
+    if (!searchText.trim()) return;
+
+    setSearching(true);
+
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          searchText
+        )}&limit=1`
+      );
+
+      const data = await response.json();
+
+      if (!data || data.length === 0) {
+        alert("Place not found.");
+        return;
+      }
+
+      setSearchTarget({
+        lat: Number(data[0].lat),
+        lng: Number(data[0].lon),
+      });
+    } catch (err) {
+      console.log("Search failed:", err);
+      alert("Search failed. Try again.");
+    } finally {
+      setSearching(false);
+    }
+  };
 
   const submitPin = async () => {
     if (!draftPin.text.trim()) return;
@@ -404,6 +445,60 @@ function MapView({ user, logout }) {
         style={{
           position: "absolute",
           zIndex: 1000,
+          top: "150px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "flex",
+          gap: "8px",
+          background: "rgba(2, 6, 23, 0.88)",
+          backdropFilter: "blur(18px)",
+          padding: "10px",
+          borderRadius: "999px",
+          border: "1px solid rgba(255,255,255,0.12)",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
+          fontFamily: "Inter, Arial, sans-serif",
+        }}
+      >
+        <input
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") searchPlace();
+          }}
+          placeholder="Search place..."
+          style={{
+            width: "260px",
+            padding: "11px 14px",
+            borderRadius: "999px",
+            border: "1px solid rgba(255,255,255,0.18)",
+            background: "rgba(15,23,42,0.95)",
+            color: "white",
+            outline: "none",
+            fontWeight: "700",
+          }}
+        />
+
+        <button
+          onClick={searchPlace}
+          disabled={searching}
+          style={{
+            padding: "11px 16px",
+            borderRadius: "999px",
+            border: "none",
+            background: "white",
+            color: "#020617",
+            cursor: "pointer",
+            fontWeight: "900",
+          }}
+        >
+          {searching ? "Searching..." : "Search"}
+        </button>
+      </div>
+
+      <div
+        style={{
+          position: "absolute",
+          zIndex: 1000,
           bottom: "22px",
           left: "22px",
           background: "rgba(2, 6, 23, 0.88)",
@@ -558,6 +653,7 @@ function MapView({ user, logout }) {
         style={{ height: "100vh", width: "100%" }}
       >
         <ViewportTracker setBounds={setBounds} />
+        <MapController searchTarget={searchTarget} />
 
         <TileLayer
           attribution="© OpenStreetMap contributors"
@@ -565,7 +661,6 @@ function MapView({ user, logout }) {
         />
 
         <LocateButton />
-
         <MapClickHandler setDraftPin={setDraftPin} user={user} />
 
         {filteredMarkers.map((marker) => {
