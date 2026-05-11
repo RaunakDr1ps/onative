@@ -8,7 +8,7 @@ import {
   useMap,
 } from "react-leaflet";
 
-import MarkerClusterGroup from "react-leaflet-cluster";
+import MarkerClusterGroup from "react-leaflet-markercluster";
 import L from "leaflet";
 
 import "leaflet/dist/leaflet.css";
@@ -31,24 +31,24 @@ function createPinIcon(category) {
   return L.divIcon({
     html: `
       <div style="
-        width: 24px;
-        height: 24px;
+        width: 26px;
+        height: 26px;
+        border-radius: 999px;
         background: ${category.color};
         border: 3px solid white;
-        border-radius: 999px;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+        box-shadow: 0 8px 18px rgba(0,0,0,0.35);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 11px;
+        font-size: 12px;
       ">
         ${category.emoji}
       </div>
     `,
     className: "",
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    popupAnchor: [0, -12],
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -14],
   });
 }
 
@@ -250,7 +250,7 @@ function MapView({ user, logout }) {
     };
 
     return () => {
-      ws.current.close();
+      if (ws.current) ws.current.close();
     };
   }, []);
 
@@ -692,7 +692,7 @@ function MapView({ user, logout }) {
         <LocateButton />
         <MapClickHandler setDraftPin={setDraftPin} user={user} />
 
-        <MarkerClusterGroup chunkedLoading>
+        <MarkerClusterGroup chunkedLoading showCoverageOnHover={false}>
           {filteredMarkers.map((marker) => {
             const category = categories[marker.category] || categories.vibe;
 
