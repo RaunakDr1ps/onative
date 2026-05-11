@@ -2,16 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
-  Marker,
-  Popup,
   useMapEvents,
   useMap,
 } from "react-leaflet";
 
-import MarkerClusterGroup from "react-leaflet-markercluster";
 import L from "leaflet";
-
 import "leaflet/dist/leaflet.css";
+import "leaflet.markercluster";
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 
@@ -26,6 +23,15 @@ const categories = {
   food: { label: "Food", emoji: "🍔", color: "#f59e0b" },
   traffic: { label: "Traffic", emoji: "🚗", color: "#f97316" },
 };
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
 function createPinIcon(category) {
   return L.divIcon({
@@ -171,6 +177,58 @@ function LocateButton() {
       📍 My Location
     </button>
   );
+}
+
+function ClusteredMarkers({ markers, nowMs }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const clusterGroup = L.markerClusterGroup({
+      showCoverageOnHover: false,
+      spiderfyOnMaxZoom: true,
+      chunkedLoading: true,
+      maxClusterRadius: 80,
+    });
+
+    markers.forEach((marker) => {
+      const category = categories[marker.category] || categories.vibe;
+
+      const leafletMarker = L.marker([marker.lat, marker.lng], {
+        icon: createPinIcon(category),
+      });
+
+      leafletMarker.bindPopup(`
+        <div style="min-width:190px;font-family:Inter,Arial,sans-serif;">
+          <div style="font-weight:950;font-size:15px;margin-bottom:6px;color:#020617;">
+            ${category.emoji} ${category.label}
+          </div>
+
+          <div style="color:#334155;font-weight:800;">
+            @${escapeHtml(marker.username)}
+          </div>
+
+          <div style="color:#0f172a;margin-top:8px;margin-bottom:10px;line-height:1.35;">
+            ${escapeHtml(marker.text)}
+          </div>
+
+          <div style="padding:8px 10px;border-radius:12px;background:#f1f5f9;color:#475569;font-size:12px;font-weight:800;">
+            Posted: ${escapeHtml(marker.time || "Just now")}<br/>
+            ⏳ ${formatTimeLeft(marker.expires_at, nowMs)}
+          </div>
+        </div>
+      `);
+
+      clusterGroup.addLayer(leafletMarker);
+    });
+
+    map.addLayer(clusterGroup);
+
+    return () => {
+      map.removeLayer(clusterGroup);
+    };
+  }, [map, markers, nowMs]);
+
+  return null;
 }
 
 function MapView({ user, logout }) {
@@ -692,69 +750,7 @@ function MapView({ user, logout }) {
         <LocateButton />
         <MapClickHandler setDraftPin={setDraftPin} user={user} />
 
-        <MarkerClusterGroup chunkedLoading showCoverageOnHover={false}>
-          {filteredMarkers.map((marker) => {
-            const category = categories[marker.category] || categories.vibe;
-
-            return (
-              <Marker
-                key={marker.id}
-                position={[marker.lat, marker.lng]}
-                icon={createPinIcon(category)}
-              >
-                <Popup>
-                  <div
-                    style={{
-                      minWidth: "190px",
-                      fontFamily: "Inter, Arial, sans-serif",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontWeight: "950",
-                        fontSize: "15px",
-                        marginBottom: "6px",
-                        color: "#020617",
-                      }}
-                    >
-                      {category.emoji} {category.label}
-                    </div>
-
-                    <div style={{ color: "#334155", fontWeight: "800" }}>
-                      @{marker.username}
-                    </div>
-
-                    <div
-                      style={{
-                        color: "#0f172a",
-                        marginTop: "8px",
-                        marginBottom: "10px",
-                        lineHeight: 1.35,
-                      }}
-                    >
-                      {marker.text}
-                    </div>
-
-                    <div
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: "12px",
-                        background: "#f1f5f9",
-                        color: "#475569",
-                        fontSize: "12px",
-                        fontWeight: "800",
-                      }}
-                    >
-                      Posted: {marker.time || "Just now"}
-                      <br />
-                      ⏳ {formatTimeLeft(marker.expires_at, nowMs)}
-                    </div>
-                  </div>
-                </Popup>
-              </Marker>
-            );
-          })}
-        </MarkerClusterGroup>
+        <ClusteredMarkers markers={filteredMarkers} nowMs={nowMs} />
       </MapContainer>
     </div>
   );
